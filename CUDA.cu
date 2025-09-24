@@ -10,7 +10,7 @@
 
 
 #define R      3
-#define BIAS   0.2f
+#define BIAS   0.1f
 #define BLKDIM 1024
 #define RADIUS ((R-1)/2)
 
@@ -25,15 +25,15 @@ void fillArrayWithRandom(float arr[], size_t size) {
         // rand() / RAND_MAX gives [0,1]
         // multiply by 2 → [0,2]
         // subtract 1 → [-1,1]
-        arr[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+        arr[i] = ((float)rand() / (float)RAND_MAX) * 2.0f - 1.0f;
     }
 }
 
 typedef struct {
     float *base;   /* original cudaMalloc pointer */
-    float *input;      /* input buffer (padded: N + 2*RADIUS) */
+    float *input;
     float *Weights;
-    float *output;      /* output buffer (padded: M + 2*RADIUS, M = N - (R-1)) */
+    float *output;
 } Layer;
 
 void initializeLayerOnDevice(Layer *layer, int N, size_t total_weights) {

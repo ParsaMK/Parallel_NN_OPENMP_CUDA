@@ -6,6 +6,8 @@
 #include <errno.h>     // errno
 #include <limits.h>   // UINT_MAX
 
+#include "hpc.h"
+
 const float BIAS = 0.1;
 const int R = 3;
 
@@ -76,7 +78,7 @@ static inline NeuralNetwork* init_network(int N, int K) {
 // Initialize input layer with random values
 void init_input(NeuralNetwork *nn) {
     for (int i = 0; i < nn->N; i++) {
-        nn->neurons[0][i] = ((float)rand() / (double)RAND_MAX) * 2.0f - 1.0f;
+        nn->neurons[0][i] = ((float)rand() / (float)RAND_MAX) * 2.0f - 1.0f;
     }
 }
 
@@ -114,12 +116,7 @@ void forward_pass(NeuralNetwork *nn) {
             #pragma omp for schedule(static)
             for (int i = 0; i < current_layer_size; i++) {
                 float sum = BIAS;
-
-                // Hint to the compiler that this loop can be vectorized using SIMD
-                // instructions. This is a form of instruction-level parallelism.
-                #pragma omp simd reduction(+:sum)
-                // Sum weighted inputs from R consecutive neurons of previous layer
-                // The inner-most loop is computationally dense.
+                
                 for (int j = 0; j < R; j++) {
                     int prev_idx = i + j;
                     // The 'if' condition makes automatic vectorization harder.
