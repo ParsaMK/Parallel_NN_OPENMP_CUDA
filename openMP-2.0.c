@@ -8,8 +8,8 @@
 
 #include "hpc.h"
 
-unsigned int N = 0; // Number of neurons in input layer
-unsigned int K = 0; // Total number of layers (including input and output)
+int N = 0; // Number of neurons in input layer
+int K = 0; // Total number of layers (including input and output)
 const float BIAS = 0.1;
 const int R = 3;
 
@@ -31,7 +31,7 @@ void fillArrayWithRandom(float arr[], size_t size) {
 int main(int argc, char *argv[]) {
     float *input, *output, *weights;
     int *layer_sizes;
-    double start_time, stop_time;
+    double start_time, stop_time, exec_time;
 
     // this line sets the random seed which in this case is the system's time
     srand(time(NULL));
@@ -56,8 +56,10 @@ int main(int argc, char *argv[]) {
 
     // Calculate layer sizes: N - t*(R-1) for layer t
     layer_sizes = (int *) malloc(K * sizeof(int));
+    int number_of_neurons = 0;
     for (int t = 0; t < K; t++) {
         layer_sizes[t] = N - t * (R - 1);
+        number_of_neurons += layer_sizes[t];
         // Validate that we don't have negative or zero neurons
         if (layer_sizes[t] <= 0) {
             printf("Error: Layer %d would have %d neurons (invalid)!\n", t, layer_sizes[t]);
@@ -98,8 +100,8 @@ int main(int argc, char *argv[]) {
         #pragma omp parallel for schedule(static) default(none) \
                 private(i, sum) \
                 shared(input, output, weights_ptr, current_layer_size, prev_layer_size, BIAS)
-        for (int i = 0; i < current_layer_size; i++) {
-            float sum = BIAS;
+        for (i = 0; i < current_layer_size; i++) {
+            sum = BIAS;
             #pragma omp simd
             for (int offset = 0; offset < R; offset++) {
                 int prev_idx = i + offset;
@@ -118,8 +120,10 @@ int main(int argc, char *argv[]) {
         }
     }
     stop_time = hpc_gettime();
-
-    printf("\nForward pass completed in %.6f seconds\n", stop_time - start_time);
+    exec_time = stop_time - start_time;
+    printf("Execution time is: %.5f\n", exec_time);
+    printf("\nThroughput: %.2f million neurons/sec\n", 
+           (number_of_neurons / exec_time) / 1e6);
 
     // Cleanup
     free(input);

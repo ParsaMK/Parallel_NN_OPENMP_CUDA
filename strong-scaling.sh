@@ -1,22 +1,26 @@
 #!/bin/bash
 
 # Settings
-SRC=openMP.c
+SRC=openMP-2.0.c
 PROG=./openMP              # name of the compiled executable
-OUTFILE=strong-scaling.csv # CSV file
-N=1000000                  # problem size;
-K=1024                     # number of layers 2^10
-CORES=$(grep -c ^processor /proc/cpuinfo) # number of logical cores
+OUTFILE="./results/strong-scaling.csv" # CSV file
+N=524288                   # problem size;
+K=512                      # number of layers 2^9
+# CORES=$(grep -c ^processor /proc/cpuinfo) # number of logical cores
+CORES=$(sysctl -n hw.logicalcpu)
 NREPS=10                   # number of repetitions
 
 # Compile
 echo "Compiling $SRC ..."
-gcc -Wall -Wpedantic -std=c99 -fopenmp -O3 -ffast-math -fuse-ld=lld -march=native "$SRC" -o "$PROG"
+clang -Wall -Wextra -Wpedantic -std=c99 -fopenmp -O3 -ffast-math -fuse-ld=lld -march=native "$SRC" -o "$PROG" -lm
 if [ $? -ne 0 ]; then
     echo "Compilation failed!"
     exit 1
 fi
 echo "Compilation successful."
+
+# --- Make results folder ---
+mkdir -p results
 
 # Write CSV header
 echo "p$(seq -s , 1 $NREPS | sed 's/[0-9]\+/t&/g')" > "$OUTFILE"
@@ -33,4 +37,3 @@ for p in $(seq $CORES); do
 done
 
 echo "Results written to $OUTFILE"
-

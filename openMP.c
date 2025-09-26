@@ -10,6 +10,7 @@
 
 const float BIAS = 0.1;
 const int R = 3;
+int number_of_neurons;
 
 // Neural network structure
 typedef struct {
@@ -32,11 +33,13 @@ static inline NeuralNetwork* init_network(int N, int K) {
     nn->N = N;
     nn->K = K;
     // nn->R = R;
-    
+
+    number_of_neurons = 0;
     // Calculate layer sizes: N - t*(R-1) for layer t
     nn->layer_sizes = malloc(K * sizeof(int));
     for (int t = 0; t < K; t++) {
         nn->layer_sizes[t] = N - t * (R - 1);
+        number_of_neurons += nn->layer_sizes[t];
         printf("Layer %d: %d - %d*(%d-1) = %d neurons\n", 
         t, N, t, R, nn->layer_sizes[t]);
         
@@ -238,11 +241,13 @@ int main(int argc, char *argv[]) {
     double start_time = hpc_gettime();
     forward_pass(nn);
     double end_time = hpc_gettime();
-
+    double exec_time = end_time - start_time;
     // Print results
     print_network(nn);
-    
-    printf("\nForward pass completed in %.6f seconds\n", end_time - start_time);
+
+    printf("Execution time is: %.5f\n", exec_time);
+    printf("\nThroughput: %.2f million neurons/sec\n", 
+           (number_of_neurons / exec_time) / 1e6);
     printf("Final output layer has %d neurons\n", nn->layer_sizes[nn->K-1]);
     
     // Optionally print weights for small networks (only for demonstration)

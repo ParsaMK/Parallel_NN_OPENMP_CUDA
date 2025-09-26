@@ -8,7 +8,6 @@
 
 #include "hpc.h"
 
-
 #define R      3
 #define BIAS   0.1f
 #define BLKDIM 1024
@@ -73,6 +72,7 @@ __global__ void shared_forward(
     int out_size
 ) {
     __shared__ float x_shared[BLKDIM + 2 * RADIUS];
+    
     int local_index = threadIdx.x;
     const int global_index = blockIdx.x * blockDim.x + local_index;
 
@@ -89,27 +89,6 @@ __global__ void shared_forward(
         sum += x_shared[local_index + offset] * W[global_index * R + offset];
     }
     y[global_index] = sigmoid_device(sum);
-}
-
-__global__ void stencil1d(int *in, int *out) 
-{
-    __shared__ int temp[BLKDIM + 2 * RADIUS];
-    const int gindex = threadIdx.x + blockIdx.x * blockDim.x + RADIUS;
-    const int lindex = threadIdx.x + RADIUS;
-    int result = 0, offset;
-    /* Read input elements into shared memory */
-    temp[lindex] = in[gindex];
-    if (threadIdx.x < RADIUS) {
-        temp[lindex - RADIUS] = in[gindex - RADIUS];
-        temp[lindex + blockDim.x] = in[gindex + blockDim.x];
-    }
-    __syncthreads(); 
-    /* Apply the stencil */
-    for (offset = -RADIUS ; offset <= RADIUS ; offset++) {
-        result += temp[lindex + offset];
-    }
-    /* Store the result */
-    out[gindex] = result;
 }
 
 int main(int argc, char *argv[]) {
@@ -138,9 +117,11 @@ int main(int argc, char *argv[]) {
 
     // Calculate layer sizes: N - t*(R-1) for layer t
     int *layer_sizes = (int *) malloc(K * sizeof(int));
+    int number_of_neurons = 0;
     for (int t = 0; t < K; t++) {
         layer_sizes[t] = N - t * (R - 1);
-        printf("Layer %d: %d - %d*(%d-1) = %d neurons\n", t, N, t, R, layer_sizes[t]);
+        number_of_neurons += layer_sizes[t];
+        // printf("Layer %d: %d - %d*(%d-1) = %d neurons\n", t, N, t, R, layer_sizes[t]);
         // Validate that we don't have negative or zero neurons
         if (layer_sizes[t] <= 0) {
             printf("Error: Layer %d would have %d neurons (invalid)!\n", t, layer_sizes[t]);
@@ -148,7 +129,7 @@ int main(int argc, char *argv[]) {
             exit(1);
         }
     }
-    printf("Neurons in the first layer: %u,\nNumber of Layers: %u\n", N, K);
+    // printf("Neurons in the first layer: %u,\nNumber of Layers: %u\n", N, K);
 
     host_input = (float*) malloc((N) * sizeof(float));
     fillArrayWithRandom(host_input, (size_t) N);
@@ -181,11 +162,11 @@ int main(int argc, char *argv[]) {
     }
 
     initializeLayerOnDevice(&device_layer, N, total_weights);
-    printf("host input: \n");
-    for (int i = 0; i < N && i < 10; i++) {
-        printf("%.6f ", host_input[i]);
-    }
-    printf("\n");
+    // printf("host input: \n");
+    // for (int i = 0; i < N && i < 10; i++) {
+    //     printf("%.6f ", host_input[i]);
+    // }
+    // printf("\n");
 
     cudaSafeCall(cudaMemcpy(device_layer.input, host_input, N * sizeof(float), cudaMemcpyHostToDevice));
     cudaSafeCall(cudaMemcpy(device_layer.Weights, host_weights, total_weights * sizeof(float), cudaMemcpyHostToDevice));
@@ -222,84 +203,103 @@ int main(int argc, char *argv[]) {
             device_layer.output = temp_ptr;
         }
     }
-    
     cudaCheckError();
     stop_time = hpc_gettime();
     spent_time = stop_time - start_time;
-    printf("Total time for %u layers: %.6f seconds\n", K, spent_time);
+    printf("No shared memory execution time is: %.5f", spent_time);
+    printf("\nThroughput no shared memory: %.2f", (number_of_neurons / spent_time));
 
-
-    // FIXED: Copy from device_layer.output (where final result actually is)
-    float *host_output = (float*) malloc(layer_sizes[K-1] * sizeof(float));
-    if (!host_output) {
-        fprintf(stderr, "Failed to allocate host memory for output\n");
-        return EXIT_FAILURE;
-    }
+    // // Copy from device_layer.output (where final result actually is)
+    // float *host_output = (float*) malloc(layer_sizes[K-1] * sizeof(float));
+    // if (!host_output) {
+    //     fprintf(stderr, "Failed to allocate host memory for output\n");
+    //     return EXIT_FAILURE;
+    // }
     
-    // The final result is in device_layer.output after the last iteration
-    cudaSafeCall(cudaMemcpy(host_output, device_layer.output, layer_sizes[K-1] * sizeof(float), cudaMemcpyDeviceToHost));
+    // // The final result is in device_layer.output after the last iteration
+    // cudaSafeCall(cudaMemcpy(host_output, device_layer.output, layer_sizes[K-1] * sizeof(float), cudaMemcpyDeviceToHost));
 
-    printf("\n");
-    printf("Final output (first 10 values or less):\n");
-    for (int i = 0; i < layer_sizes[K-1] && i < 10; i++) {
-        printf("%.6f ", host_output[i]);
-    }
-    printf("\n");
+    // printf("\n");
+    // // printf("Final output (first 10 values or less):\n");
+    // for (int i = 0; i < layer_sizes[K-1] && i < 10; i++) {
+    //     printf("%.6f ", host_output[i]);
+    // }
+    // printf("\n");
+
+    cudaFree(device_layer.base);
 
     // Now do the same with shared memory kernel
     initializeLayerOnDevice(&shared_device_layer, N, total_weights);
-    printf("host input: \n");
-        for (int i = 0; i < N && i < 10; i++) {
-            printf("%.6f ", host_input[i]);
-        }
-        printf("\n");
+    // printf("\nhost input: \n");
+    //     for (int i = 0; i < N && i < 10; i++) {
+    //         printf("%.6f ", host_input[i]);
+    //     }
+    //     printf("\n");
 
-    cudaSafeCall(cudaMemcpy(device_layer.input, host_input, N * sizeof(float), cudaMemcpyHostToDevice));
-    cudaSafeCall(cudaMemcpy(device_layer.Weights, host_weights, total_weights * sizeof(float), cudaMemcpyHostToDevice));
+    cudaSafeCall(cudaMemcpy(shared_device_layer.input, host_input, N * sizeof(float), cudaMemcpyHostToDevice));
+    cudaSafeCall(cudaMemcpy(shared_device_layer.Weights, host_weights, total_weights * sizeof(float), cudaMemcpyHostToDevice));
     cudaCheckError();
     start_time_shared = hpc_gettime();
     for (int t = 0; t < K-1; t++) {
         shared_forward<<<(layer_sizes[t+1] + BLKDIM - 1) / BLKDIM, BLKDIM>>>(
-            device_layer.input,
-            device_layer.Weights + weight_offsets[t],  // Offset for current layer's weights
-            device_layer.output,
+            shared_device_layer.input,
+            shared_device_layer.Weights + weight_offsets[t],  // Offset for current layer's weights
+            shared_device_layer.output,
             layer_sizes[t+1]
         );
         // Swap buffers for next iteration
         if (t < K - 2) {  // Only swap if there's another iteration
-            float *temp_ptr = device_layer.input;
-            device_layer.input = device_layer.output;
-            device_layer.output = temp_ptr;
+            float *temp_ptr = shared_device_layer.input;
+            shared_device_layer.input = shared_device_layer.output;
+            shared_device_layer.output = temp_ptr;
         }
     }
     cudaCheckError();
     stop_time_shared = hpc_gettime();
     spent_time_shared = stop_time_shared - start_time_shared;
-    printf("Total time for shared memory kernel: %.6f seconds\n", spent_time_shared);
+    printf("\nShared memory execution time is: %.5f", spent_time_shared);
+    printf("\nThroughput with shared memory: %.2f", (number_of_neurons / spent_time_shared));
 
-   // FIXED: Copy from device_layer.output (where final result actually is)
-    float *host_shared_output = (float*) malloc(layer_sizes[K-1] * sizeof(float));
-    if (!host_shared_output) {
-        fprintf(stderr, "Failed to allocate host memory for output\n");
-        return EXIT_FAILURE;
-    }
-    
-    // The final result is in device_layer.output after the last iteration
-    cudaSafeCall(cudaMemcpy(host_shared_output, device_layer.output, layer_sizes[K-1] * sizeof(float), cudaMemcpyDeviceToHost));
 
-    printf("\n");
-    printf("Final output (first 10 values or less):\n");
-    for (int i = 0; i < layer_sizes[K-1] && i < 10; i++) {
-        printf("%.6f ", host_shared_output[i]);
-    }
-    printf("\n");
+//    // Copy from device_layer.output (where final result actually is)
+//     float *host_shared_output = (float*) malloc(layer_sizes[K-1] * sizeof(float));
+//     if (!host_shared_output) {
+//         fprintf(stderr, "Failed to allocate host memory for output\n");
+//         return EXIT_FAILURE;
+//     }
+
+    // // The final result is in device_layer.output after the last iteration
+    // cudaSafeCall(cudaMemcpy(host_shared_output, shared_device_layer.output, layer_sizes[K-1] * sizeof(float), cudaMemcpyDeviceToHost));
+
+    // for (int i = 0; i < layer_sizes[K-1] && i < 10; i++) {
+    //     printf("%.6f ", host_shared_output[i]);
+    // }
+    // printf("\n");
+
+    // // Compare outputs element-wise
+    // int outputs_match = 1;
+    // for (int i = 0; i < layer_sizes[K-1]; i++) {
+    //     if (fabs(host_shared_output[i] - host_output[i]) > 1e-5f) {
+    //         outputs_match = 0;
+    //         fprintf(stderr, "Error: Output mismatch at index %d: %.6f (shared) vs %.6f (normal)\n", i, host_shared_output[i], host_output[i]);
+    //         break;
+    //     }
+    // }
+    // if (!outputs_match) {
+    //     printf("Outputs do NOT match!\n");
+    //     return EXIT_FAILURE;
+    // } else {
+    //     printf("Outputs match!\n");
+    // }
 
     // Clean up
     free(host_input);
     free(host_weights);
-    free(host_output);
+    // free(host_output);
+    // free(host_shared_output);
+    free(weight_offsets);
     free(layer_sizes);
-    cudaFree(device_layer.base);
+    cudaFree(shared_device_layer.base);
     
     return 0;
 }
