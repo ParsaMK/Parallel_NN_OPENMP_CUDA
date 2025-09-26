@@ -6,13 +6,14 @@ PROG=./openMP              # name of the compiled executable
 OUTFILE="./results/strong-scaling.csv" # CSV file
 N=524288                   # problem size;
 K=512                      # number of layers 2^9
-# CORES=$(grep -c ^processor /proc/cpuinfo) # number of logical cores
-CORES=$(sysctl -n hw.logicalcpu)
+CORES=$(grep -c ^processor /proc/cpuinfo) # number of logical cores
+# CORES=$(sysctl -n hw.logicalcpu)
 NREPS=10                   # number of repetitions
 
 # Compile
 echo "Compiling $SRC ..."
-clang -Wall -Wextra -Wpedantic -std=c99 -fopenmp -O3 -ffast-math -fuse-ld=lld -march=native "$SRC" -o "$PROG" -lm
+# clang -Wall -Wextra -Wpedantic -std=c99 -fopenmp -O3 -ffast-math -fuse-ld=lld -march=native "$SRC" -o "$PROG" -lm
+gcc -Wall -Wextra -Wpedantic -std=c99 -fopenmp -O3 -ffast-math "$SRC" -o "$PROG" -lm
 if [ $? -ne 0 ]; then
     echo "Compilation failed!"
     exit 1

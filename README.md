@@ -15,7 +15,7 @@ This project provides two implementations of a parallel neural network:
 To compile the OpenMP implementation:
 
 ```bash
-gcc -Wall -Wpedantic -std=c99 -fopenmp -O3 -ffast-math -fuse-ld=lld -march=native openMP.c -o openMP
+gcc -Wall -Wextra -Wpedantic -std=c99 -fopenmp -O3 -ffast-math openMP-2.0 -o openMP-2.0 -lm
 ```
 
 ### CUDA (GPU)
@@ -23,7 +23,7 @@ gcc -Wall -Wpedantic -std=c99 -fopenmp -O3 -ffast-math -fuse-ld=lld -march=nativ
 To compile the CUDA implementation:
 
 ```bash
-nvcc -g -G mykernel.cu -o mykernel \
+nvcc -g -G CUDA.cu -o CUDA \
   -gencode arch=compute_50,code=sm_50 \
   -gencode arch=compute_61,code=sm_61 \
   -gencode arch=compute_75,code=sm_75 \
@@ -40,12 +40,12 @@ Both executables accept the same command-line arguments:
 
 ### OpenMP
 ```bash
-./openMP [NUMBER-OF-NEURONS] [NUMBER-OF-LAYERS]
+./openMP-2.0 [NUMBER-OF-NEURONS] [NUMBER-OF-LAYERS]
 ```
 
 ### CUDA
 ```bash
-./mykernel [NUMBER-OF-NEURONS] [NUMBER-OF-LAYERS]
+./CUDA [NUMBER-OF-NEURONS] [NUMBER-OF-LAYERS]
 ```
 
 ### Parameters
